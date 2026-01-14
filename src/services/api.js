@@ -1,7 +1,8 @@
 // API Service for Plant Monitoring System
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL 
-  || 'https://plant-monitor-api.onrender.com/api';  // ← Use production URL by default!
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+  || 'https://plant-monitor-api.onrender.com';  // ← Remove /api suffix
+
 
 const POLL_INTERVAL = parseInt(import.meta.env.VITE_POLL_INTERVAL) || 5000;
 
@@ -16,9 +17,10 @@ class PlantMonitoringAPI {
    */
   async getLatestData(deviceId = 'ESP32_001') {
     try {
-      const url = deviceId 
-        ? `${this.baseUrl}/readings/latest?deviceId=${deviceId}`
-        : `${this.baseUrl}/readings/latest`;
+      const url = deviceId
+        ? `${this.baseUrl}/api/readings/latest?deviceId=${deviceId}`
+        : `${this.baseUrl}/api/readings/latest`;
+
       
       const response = await fetch(url);
       
