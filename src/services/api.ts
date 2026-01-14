@@ -1,5 +1,5 @@
 // src/services/api.ts - FIXED FOR RENDER BACKEND
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://YOUR-RENDER-APP.onrender.com/api';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://plant-monitor-api.onrender.com';
 // 🔄 REPLACE "YOUR-RENDER-APP.onrender.com" with your actual Render URL
 
 export interface SensorData {
