@@ -3,9 +3,11 @@
 // ESP32 Device Configuration
 export const ESP32_CONFIG = {
   baseUrl: import.meta.env.VITE_ESP32_URL || 'http://192.168.1.100',
+  endpoint: import.meta.env.VITE_API_BASE_URL || 'http://192.168.1.100/api',
   timeout: 5000,
   retryAttempts: 3,
   retryDelay: 1000,
+  updateInterval: 5000,
 };
 
 // WebSocket Configuration
