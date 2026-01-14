@@ -1,15 +1,14 @@
-// src/services/api.ts - FIXED FOR RENDER BACKEND
+// src/services/api.ts - CORRECTED ENDPOINTS
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://plant-monitor-api.onrender.com';
-// 🔄 REPLACE "YOUR-RENDER-APP.onrender.com" with your actual Render URL
 
 export interface SensorData {
-  _id: string;
+  id: string;
   deviceId: string;
   soilValue: number;
   ldrValue: number;
-  soilCondition: 'Good' | 'Okay' | 'Bad';
-  lightCondition: 'Good' | 'Okay' | 'Bad';
-  timestamp: string;
+  soilCondition: string;
+  lightCondition: string;
+  receivedAt: string;
 }
 
 export interface DeviceStatus {
@@ -25,66 +24,59 @@ class PlantMonitoringAPI {
     this.baseUrl = API_BASE_URL;
   }
 
-  // ✅ FIXED: Matches your backend /api/sensor-data
+  // ✅ FIXED: Use backend's /api/sensor-data (has ALL 115 readings)
   async getLatestData(): Promise<SensorData | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/readings/latest`);  // Backend has this
+      console.log('🔄 Fetching:', `${this.baseUrl}/api/sensor-data`);
+      const response = await fetch(`${this.baseUrl}/api/sensor-data`);
       const result = await response.json();
       
-      if (result.success) {
-        return result.reading;  // Backend returns {success: true, reading: data}
-      }
-      return null;
-    } catch (error) {
-      console.error('Error fetching latest data:', error);
-      return null;
-    }
-  }
-
-  // ✅ FIXED: Use actual backend endpoint
-  async getHistoricalData(hours = 24, limit = 100): Promise<SensorData[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/sensor-data?limit=${limit}`);
-      const result = await response.json();
+      // Backend returns {success: true, data: [array], latest: {...}}
+      const latest = result.data?.[0] || result.latest;
+      console.log('✅ Latest:', latest);
       
-      if (result.success) {
-        return result.data;  // Backend returns {success: true, data: [...]}
-      }
-      return [];
-    } catch (error) {
-      console.error('Error fetching historical data:', error);
-      return [];
-    }
-  }
-
-  async getDeviceStatus(deviceId = 'ESP32_001'): Promise<DeviceStatus | null> {
-    try {
-      const response = await fetch(`${this.baseUrl}/readings?deviceId=${deviceId}&limit=1`);
-      const result = await response.json();
-      
-      if (result.success && result.readings.length > 0) {
-        const latest = result.readings[0];
+      if (latest) {
         return {
+          _id: latest.id || latest._id,
           deviceId: latest.deviceId,
-          status: 'online',
-          lastSeen: latest.receivedAt
+          soilValue: latest.soilValue,
+          ldrValue: latest.ldrValue,
+          soilCondition: latest.soilCondition,
+          lightCondition: latest.lightCondition,
+          timestamp: latest.receivedAt || latest.timestamp
         };
       }
       return null;
     } catch (error) {
-      console.error('Error fetching device status:', error);
+      console.error('❌ getLatestData error:', error);
       return null;
     }
   }
 
-  async checkHealth(): Promise<boolean> {
+  // ✅ FIXED: Same endpoint for history
+  async getHistoricalData(hours = 24, limit = 100): Promise<SensorData[]> {
     try {
-      const response = await fetch(`${this.baseUrl.replace('/api', '')}/`);  // Root endpoint
+      const response = await fetch(`${this.baseUrl}/api/sensor-data?limit=${limit}`);
       const result = await response.json();
-      return result.status === 'online';
+      return result.data || [];
     } catch (error) {
-      console.error('Backend health check failed:', error);
-      return false;
+      console.error('❌ getHistoricalData error:', error);
+      return [];
+    }
+  }
+
+  // ✅ FIXED: Backend root shows "online" status
+  async getDeviceStatus(): Promise<DeviceStatus | null> {
+    try {
+      const response = await fetch(this.baseUrl);
+      const result = await response.json();
+      return {
+        deviceId: 'ESP32_001',
+        status: result.status === 'online' ? 'online' : 'offline',
+        lastSeen: result.statistics?.latestReading || new Date().toISOString()
+      };
+    } catch (error) {
+      return { deviceId: 'ESP32_001', status: 'offline', lastSeen: new Date().toISOString() };
     }
   }
 }
