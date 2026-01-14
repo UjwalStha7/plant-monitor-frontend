@@ -1,25 +1,21 @@
-// src/hooks/useSensorData.ts
+// src/hooks/useSensorData.ts - DIRECT API CALLS (NO SERVICE ABSTRACTION)
 import { useState, useEffect, useCallback } from 'react';
-import { api, SensorData, DeviceStatus } from '../services/api';
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://plant-monitor-api.onrender.com';
 
 interface SensorDataState {
   soilMoisture: number;
   light: number;
 }
 
-interface ConnectionState {
-  isConnected: boolean;
-  lastUpdate: Date | null;
-  isChecking: boolean;
-}
-
-// Export this interface so it can be imported in index.ts
 export interface UseSensorDataResult {
   sensorData: SensorDataState;
-  historyData: SensorData[];
-  connectionState: ConnectionState;
+  historyData: any[];
+  connectionState: {
+    isConnected: boolean;
+    lastUpdate: Date | null;
+    isChecking: boolean;
+  };
   config: {
     endpoint: string;
     updateInterval: number;
@@ -32,89 +28,73 @@ export function useSensorData(): UseSensorDataResult {
     soilMoisture: 0,
     light: 0,
   });
-  const [historyData, setHistoryData] = useState<SensorData[]>([]);
-  
-  const [connectionState, setConnectionState] = useState<ConnectionState>({
+  const [historyData, setHistoryData] = useState<any[]>([]);
+  const [connectionState, setConnectionState] = useState({
     isConnected: false,
     lastUpdate: null,
     isChecking: false,
   });
 
   const [config] = useState({
-    endpoint: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api',
-    updateInterval: POLL_INTERVAL,
+    endpoint: API_BASE_URL + '/api/sensor-data',
+    updateInterval: 5000,
   });
 
   const fetchLatestData = useCallback(async () => {
     setConnectionState(prev => ({ ...prev, isChecking: true }));
     
     try {
-      // Fetch latest sensor data
-      const latestData = await api.getLatestData();
+      console.log('🔄 DIRECT API CALL:', config.endpoint);
+      const response = await fetch(config.endpoint);
       
-      // Fetch device status
-      const deviceStatus = await api.getDeviceStatus();
-
-      if (latestData) {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      
+      const result = await response.json();
+      console.log('✅ DIRECT API RESPONSE:', result);
+      
+      const latest = result.data?.[0] || result.latest;
+      if (latest) {
         setSensorData({
-          soilMoisture: latestData.soilValue,
-          light: latestData.ldrValue,
+          soilMoisture: latest.soilValue || 0,
+          light: latest.ldrValue || 0,
         });
-
         setConnectionState({
-          isConnected: deviceStatus?.status === 'online' || false,
-          lastUpdate: new Date(latestData.timestamp),
+          isConnected: true,
+          lastUpdate: new Date(),
           isChecking: false,
         });
-      } else {
-        setConnectionState(prev => ({
-          ...prev,
-          isConnected: false,
-          isChecking: false,
-        }));
       }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('❌ DIRECT API ERROR:', error);
       setConnectionState(prev => ({
         ...prev,
         isConnected: false,
         isChecking: false,
       }));
     }
-  }, []);
+  }, [config.endpoint]);
 
   const fetchHistoricalData = useCallback(async () => {
     try {
-      const data = await api.getHistoricalData(24, 100);
-      setHistoryData(data);
+      const url = `${config.endpoint}?limit=100`;
+      console.log('📈 History:', url);
+      const response = await fetch(url);
+      const result = await response.json();
+      setHistoryData(result.data || []);
     } catch (error) {
-      console.error('Error fetching historical data:', error);
+      console.error('❌ History error:', error);
     }
-  }, []);
+  }, [config.endpoint]);
 
-  // Initial fetch
   useEffect(() => {
     fetchLatestData();
     fetchHistoricalData();
   }, [fetchLatestData, fetchHistoricalData]);
 
-  // Poll for updates
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchLatestData();
-    }, POLL_INTERVAL);
-
+    const interval = setInterval(fetchLatestData, config.updateInterval);
     return () => clearInterval(interval);
-  }, [fetchLatestData]);
-
-  // Refresh historical data every 5 minutes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchHistoricalData();
-    }, 5 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, [fetchHistoricalData]);
+  }, [fetchLatestData, config.updateInterval]);
 
   const refresh = useCallback(() => {
     fetchLatestData();
@@ -126,28 +106,6 @@ export function useSensorData(): UseSensorDataResult {
     historyData,
     connectionState,
     config,
-    refresh,
-  };
-}
-
-// Add these additional hook exports that index.ts is looking for
-export function useCurrentSensorData() {
-  const { sensorData, connectionState, refresh } = useSensorData();
-  
-  return {
-    soilMoisture: sensorData.soilMoisture,
-    light: sensorData.light,
-    isConnected: connectionState.isConnected,
-    lastUpdate: connectionState.lastUpdate,
-    refresh,
-  };
-}
-
-export function useSensorHistory() {
-  const { historyData, refresh } = useSensorData();
-  
-  return {
-    data: historyData,
     refresh,
   };
 }
