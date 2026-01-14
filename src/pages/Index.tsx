@@ -1,9 +1,9 @@
 // src/pages/index.tsx
 import ConnectionStatusBar from '@/components/ConnectionStatusBar';
-import { SystemConfigCard } from '@/components/SystemConfigCard';
 import SensorCard from '@/components/SensorCard';
-import { SensorChart } from '@/components/SensorChart';
-import { ThemeToggle } from '@/components/ThemeToggle';
+import SystemConfigCard from '@/components/SystemConfigCard';
+import SensorChart from '@/components/SensorChart';
+import ThemeToggle from '@/components/ThemeToggle';
 import { useSensorData } from '@/hooks/useSensorData';
 import { getSoilMoistureCondition, getLightCondition } from '@/config/app.config';
 import { Leaf } from 'lucide-react';
