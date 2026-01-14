@@ -15,12 +15,23 @@ interface ConnectionState {
   isChecking: boolean;
 }
 
-export function useSensorData() {
+// Export this interface so it can be imported in index.ts
+export interface UseSensorDataResult {
+  sensorData: SensorDataState;
+  historyData: SensorData[];
+  connectionState: ConnectionState;
+  config: {
+    endpoint: string;
+    updateInterval: number;
+  };
+  refresh: () => void;
+}
+
+export function useSensorData(): UseSensorDataResult {
   const [sensorData, setSensorData] = useState<SensorDataState>({
     soilMoisture: 0,
     light: 0,
   });
-
   const [historyData, setHistoryData] = useState<SensorData[]>([]);
   
   const [connectionState, setConnectionState] = useState<ConnectionState>({
@@ -115,6 +126,28 @@ export function useSensorData() {
     historyData,
     connectionState,
     config,
+    refresh,
+  };
+}
+
+// Add these additional hook exports that index.ts is looking for
+export function useCurrentSensorData() {
+  const { sensorData, connectionState, refresh } = useSensorData();
+  
+  return {
+    soilMoisture: sensorData.soilMoisture,
+    light: sensorData.light,
+    isConnected: connectionState.isConnected,
+    lastUpdate: connectionState.lastUpdate,
+    refresh,
+  };
+}
+
+export function useSensorHistory() {
+  const { historyData, refresh } = useSensorData();
+  
+  return {
+    data: historyData,
     refresh,
   };
 }
