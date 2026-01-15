@@ -1,15 +1,13 @@
 /**
  * ============================================================================
- * APPLICATION CONFIGURATION
+ * APPLICATION CONFIGURATION - FIXED FOR YOUR BACKEND
  * ============================================================================
  * 
  * Centralized configuration for the entire application.
- * Modify these values to configure data sources, thresholds, and behavior.
  * 
- * INTEGRATION GUIDE:
- * 1. To connect to real ESP32: Set DATA_SOURCE_MODE to 'esp32'
- * 2. Update ESP32_CONFIG.endpoint to your device's IP address
- * 3. For WebSocket: Set DATA_SOURCE_MODE to 'websocket' and configure WEBSOCKET_CONFIG
+ * ✅ CONFIGURED FOR YOUR RENDER BACKEND:
+ * Base URL: https://plant-monitor-api.onrender.com
+ * Endpoint: /api/sensor-data
  */
 
 import type { 
@@ -28,65 +26,61 @@ import type {
 /**
  * Current data source mode
  * 
- * Options:
- * - 'mock': Use simulated data (for development/demo)
- * - 'esp32': Connect to real ESP32 via HTTP polling
- * - 'websocket': Use WebSocket for real-time updates (future)
- * 
- * TOGGLE THIS to switch between mock and real data
+ * ✅ SET TO 'esp32' - Will fetch real data from Render backend
  */
 export const DATA_SOURCE_MODE: DataSourceMode = 'esp32';
 
 // ============================================================================
-// BACKEND API CONFIGURATION
+// BACKEND API CONFIGURATION - FIXED!
 // ============================================================================
 
 /**
  * Backend API Configuration
  * 
- * Your Render-deployed backend with MongoDB Atlas storage.
- * The ESP32 sends data to this backend, and the frontend fetches from it.
+ * ✅ CORRECTED ENDPOINT: /api/sensor-data
  * 
- * API Response format from /api/readings/latest:
+ * Your Render backend stores ESP32 data in memory.
+ * ESP32 sends to: POST /api/readings
+ * Frontend fetches from: GET /api/sensor-data
+ * 
+ * API Response format from /api/sensor-data:
  * {
  *   "success": true,
- *   "reading": {
- *     "soilValue": 2067,
- *     "ldrValue": 2858,
+ *   "timestamp": "2026-01-15T03:30:57.651Z",
+ *   "count": 128,
+ *   "latest": {
+ *     "soilValue": 2266,
+ *     "ldrValue": 1170,
  *     "soilCondition": "Okay",
- *     "lightCondition": "Okay",
- *     "receivedAt": "2026-01-14T09:03:00.102Z"
- *   }
+ *     "lightCondition": "Bad",
+ *     "receivedAt": "2026-01-15T02:52:48.740Z",
+ *     "deviceId": "ESP32_001"
+ *   },
+ *   "data": [ ... array of readings ... ]
  * }
  */
 export const ESP32_CONFIG: ESP32Config = {
-  endpoint: 'https://plant-monitor-api.onrender.com/api/readings/latest',
+  endpoint: 'https://plant-monitor-api.onrender.com/api/sensor-data',  // ← FIXED!
   updateInterval: 5,           // Poll every 5 seconds
-  timeout: 15000,              // 15 second timeout (Render cold starts can be slow)
+  timeout: 15000,              // 15 second timeout (Render cold starts)
 };
 
 /**
  * Connection timeout threshold in milliseconds
  * If no data received within this time, ESP32 is considered disconnected
+ * 
+ * ESP32 sends every 5 seconds, so 2 minutes is a safe threshold
  */
-export const CONNECTION_TIMEOUT_MS = 60000; // 1 minute
+export const CONNECTION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 // ============================================================================
 // WEBSOCKET CONFIGURATION (FUTURE)
 // ============================================================================
 
-/**
- * WebSocket Configuration for real-time updates
- * 
- * FUTURE INTEGRATION:
- * For lower latency, implement WebSocket on ESP32 using AsyncWebSocket library.
- * 
- * Example ESP32 WebSocket URL: ws://192.168.137.77:81/
- */
 export const WEBSOCKET_CONFIG: WebSocketConfig = {
-  url: 'ws://192.168.137.77:81/',  // ← UPDATE for WebSocket mode
-  reconnectInterval: 5000,          // Reconnect every 5 seconds on disconnect
-  maxReconnectAttempts: 10,         // Maximum reconnection attempts
+  url: 'ws://192.168.137.77:81/',
+  reconnectInterval: 5000,
+  maxReconnectAttempts: 10,
 };
 
 // ============================================================================
@@ -94,18 +88,16 @@ export const WEBSOCKET_CONFIG: WebSocketConfig = {
 // ============================================================================
 
 /**
- * Soil Moisture Thresholds (based on capacitive soil sensor ADC values)
+ * Soil Moisture Thresholds (based on your ESP32 code)
  * 
- * ADC Range: 0-4095 (12-bit ESP32 ADC)
- * Lower values = More moisture
- * Higher values = Less moisture (dry soil)
- * 
- * Calibration: Adjust these based on your specific sensor and soil type
+ * From your ESP32 code:
+ * - value ≤ 1500: Good
+ * - value 1501-2500: Okay
+ * - value > 2500: Bad
  */
 export const SOIL_MOISTURE_THRESHOLDS: SensorThresholds = {
-  good: 1500,   // value ≤ 1500 = Good (wet)
-  okay: 2500,   // value 1501-2500 = Okay (moderate)
-  // value > 2500 = Bad (dry, needs water)
+  good: 1500,
+  okay: 2500,
   levels: [
     { value: 1500, label: 'Good', color: 'hsl(var(--success))' },
     { value: 2500, label: 'Okay', color: 'hsl(var(--warning))' },
@@ -114,18 +106,16 @@ export const SOIL_MOISTURE_THRESHOLDS: SensorThresholds = {
 };
 
 /**
- * Light Sensor Thresholds (LDR ADC values)
+ * Light Sensor Thresholds (based on your ESP32 code)
  * 
- * ADC Range: 0-4095 (12-bit ESP32 ADC)
- * Lower values = Less light (dark)
- * Higher values = More light (bright)
- * 
- * Calibration: Adjust based on your LDR and lighting conditions
+ * From your ESP32 code:
+ * - value < 1500: Bad
+ * - value 1500-2999: Okay
+ * - value ≥ 3000: Good
  */
 export const LIGHT_THRESHOLDS: SensorThresholds = {
-  good: 3000,   // value ≥ 3000 = Good (bright)
-  okay: 1500,   // value 1500-2999 = Okay (moderate)
-  // value < 1500 = Bad (too dark)
+  good: 3000,
+  okay: 1500,
   levels: [
     { value: 1500, label: 'Bad', color: 'hsl(var(--destructive))' },
     { value: 3000, label: 'Okay', color: 'hsl(var(--warning))' },
@@ -139,7 +129,6 @@ export const LIGHT_THRESHOLDS: SensorThresholds = {
 
 /**
  * Maximum number of data points to keep in history
- * Higher values = more memory usage but longer history
  */
 export const HISTORY_MAX_POINTS = 30;
 
@@ -156,10 +145,6 @@ export const CHART_CONFIG = {
 // COMPLETE APP CONFIG OBJECT
 // ============================================================================
 
-/**
- * Complete application configuration
- * Import this single object for all configuration needs
- */
 export const APP_CONFIG: AppConfig = {
   dataSource: DATA_SOURCE_MODE,
   esp32: ESP32_CONFIG,
@@ -193,7 +178,6 @@ export const getLightCondition = (value: number): 'Good' | 'Okay' | 'Bad' => {
 
 /**
  * Get condition for any sensor type
- * Extensible for future sensor types
  */
 export const getSensorCondition = (
   type: 'soil' | 'light', 

@@ -1,34 +1,44 @@
 /**
  * ============================================================================
- * BACKEND API SERVICE
+ * BACKEND API SERVICE - FIXED FOR YOUR RENDER BACKEND
  * ============================================================================
  * 
  * Handles HTTP communication with the Render-deployed backend API.
- * The backend stores ESP32 sensor data in MongoDB Atlas.
+ * The backend stores ESP32 sensor data in memory (will upgrade to MongoDB).
  * 
  * API ENDPOINT:
- * GET /api/readings/latest
+ * GET https://plant-monitor-api.onrender.com/api/sensor-data
  * 
- * RESPONSE FORMAT:
+ * RESPONSE FORMAT (from your actual backend):
  * {
  *   "success": true,
- *   "reading": {
- *     "soilValue": 2067,
- *     "ldrValue": 2858,
+ *   "timestamp": "2026-01-15T03:30:57.651Z",
+ *   "count": 128,
+ *   "latest": {
+ *     "soilValue": 2266,
+ *     "ldrValue": 1170,
  *     "soilCondition": "Okay",
- *     "lightCondition": "Okay",
- *     "receivedAt": "2026-01-14T09:03:00.102Z"
- *   }
+ *     "lightCondition": "Bad",
+ *     "receivedAt": "2026-01-15T02:52:48.740Z",
+ *     "deviceId": "ESP32_001"
+ *   },
+ *   "data": [ ... ]
  * }
  */
 
 import type { 
   SensorData, 
-  ESP32Config, 
-  BackendAPIResponse,
-  BackendReading 
+  ESP32Config
 } from '@/types/sensor.types';
-import { ESP32_CONFIG, CONNECTION_TIMEOUT_MS } from '@/config/app.config';
+
+// ============================================================================
+// CONFIGURATION - HARDCODED FOR YOUR BACKEND
+// ============================================================================
+
+const BACKEND_BASE_URL = 'https://plant-monitor-api.onrender.com';
+const API_ENDPOINT = '/api/sensor-data';
+const DEFAULT_TIMEOUT = 10000; // 10 seconds
+const CONNECTION_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 // ============================================================================
 // ERROR TYPES
@@ -56,6 +66,39 @@ export class ESP32ParseError extends Error {
 }
 
 // ============================================================================
+// BACKEND API RESPONSE TYPES (matching your actual backend)
+// ============================================================================
+
+interface BackendLatestReading {
+  id?: string;
+  deviceId: string;
+  soilValue: number;
+  ldrValue: number;
+  soilCondition: string;
+  lightCondition: string;
+  receivedAt: string;
+  wifiRSSI?: number;
+  freeHeap?: number;
+  sendAttempt?: number;
+  timestamp?: number;
+}
+
+interface BackendSensorDataResponse {
+  success: boolean;
+  timestamp: string;
+  count: number;
+  latest: BackendLatestReading;
+  data: Array<{
+    soilValue: number;
+    ldrValue: number;
+    soilCondition: string;
+    lightCondition: string;
+    timestamp: string;
+    deviceId: string;
+  }>;
+}
+
+// ============================================================================
 // EXTENDED SENSOR DATA (includes backend metadata)
 // ============================================================================
 
@@ -73,21 +116,21 @@ export interface ExtendedSensorData extends SensorData {
  * Backend API Service
  * 
  * Fetches sensor data from your Render-deployed backend.
- * The backend stores data from ESP32 in MongoDB Atlas.
+ * Calls: https://plant-monitor-api.onrender.com/api/sensor-data
  */
 export class ESP32Service {
-  private config: ESP32Config;
+  private timeout: number;
   private abortController: AbortController | null = null;
 
-  constructor(config: ESP32Config = ESP32_CONFIG) {
-    this.config = config;
+  constructor(timeout: number = DEFAULT_TIMEOUT) {
+    this.timeout = timeout;
   }
 
   /**
    * Get the full API URL
    */
   private get apiUrl(): string {
-    return this.config.endpoint;
+    return `${BACKEND_BASE_URL}${API_ENDPOINT}`;
   }
 
   /**
@@ -102,10 +145,12 @@ export class ESP32Service {
     this.abortController = new AbortController();
     const timeoutId = setTimeout(
       () => this.abortController?.abort(),
-      this.config.timeout
+      this.timeout
     );
 
     try {
+      console.log('🔄 Fetching from:', this.apiUrl);
+      
       const response = await fetch(this.apiUrl, {
         method: 'GET',
         signal: this.abortController.signal,
@@ -129,7 +174,7 @@ export class ESP32Service {
       clearTimeout(timeoutId);
       
       if (error instanceof Error && error.name === 'AbortError') {
-        throw new ESP32TimeoutError(this.config.timeout);
+        throw new ESP32TimeoutError(this.timeout);
       }
       
       if (error instanceof ESP32ConnectionError || 
@@ -147,11 +192,13 @@ export class ESP32Service {
   /**
    * Parse JSON response from backend
    */
-  private async parseResponse(response: Response): Promise<BackendAPIResponse> {
+  private async parseResponse(response: Response): Promise<BackendSensorDataResponse> {
     try {
       const data = await response.json();
-      return data as BackendAPIResponse;
-    } catch {
+      console.log('📥 Backend response:', data);
+      return data as BackendSensorDataResponse;
+    } catch (error) {
+      console.error('❌ Parse error:', error);
       throw new ESP32ParseError('Invalid JSON response from backend');
     }
   }
@@ -159,22 +206,29 @@ export class ESP32Service {
   /**
    * Transform backend response to frontend SensorData format
    */
-  private transformBackendData(response: BackendAPIResponse): ExtendedSensorData {
-    if (!response.success || !response.reading) {
-      throw new ESP32ParseError(response.error || 'No reading data available');
+  private transformBackendData(response: BackendSensorDataResponse): ExtendedSensorData {
+    if (!response.success || !response.latest) {
+      throw new ESP32ParseError('No reading data available from backend');
     }
 
-    const reading = response.reading;
-    const receivedAt = reading.receivedAt ? new Date(reading.receivedAt) : null;
+    const latest = response.latest;
+    const receivedAt = latest.receivedAt ? new Date(latest.receivedAt) : null;
     
     // Check if ESP32 is online based on last data timestamp
     const isESP32Online = this.checkESP32Online(receivedAt);
 
+    console.log('✅ Transformed data:', {
+      soilMoisture: latest.soilValue,
+      light: latest.ldrValue,
+      isESP32Online,
+      receivedAt
+    });
+
     return {
-      soilMoisture: this.validateADCValue(reading.soilValue, 'soilValue'),
-      light: this.validateADCValue(reading.ldrValue, 'ldrValue'),
+      soilMoisture: this.validateADCValue(latest.soilValue, 'soilValue'),
+      light: this.validateADCValue(latest.ldrValue, 'ldrValue'),
       receivedAt,
-      deviceId: reading.deviceId || null,
+      deviceId: latest.deviceId || null,
       isESP32Online,
     };
   }
@@ -189,7 +243,17 @@ export class ESP32Service {
     const now = new Date();
     const timeDiff = now.getTime() - lastReceived.getTime();
     
-    return timeDiff < CONNECTION_TIMEOUT_MS;
+    // ESP32 sends data every 5 seconds, so if we haven't received data 
+    // in 2 minutes, consider it offline
+    const isOnline = timeDiff < CONNECTION_TIMEOUT_MS;
+    
+    console.log('🔌 ESP32 Status:', {
+      lastReceived: lastReceived.toISOString(),
+      timeDiff: Math.round(timeDiff / 1000) + 's',
+      isOnline
+    });
+    
+    return isOnline;
   }
 
   /**
@@ -211,7 +275,8 @@ export class ESP32Service {
     try {
       await this.fetchSensorData();
       return true;
-    } catch {
+    } catch (error) {
+      console.error('Connection check failed:', error);
       return false;
     }
   }
@@ -227,17 +292,10 @@ export class ESP32Service {
   }
 
   /**
-   * Update configuration
-   */
-  updateConfig(config: Partial<ESP32Config>): void {
-    this.config = { ...this.config, ...config };
-  }
-
-  /**
    * Get current endpoint
    */
   get endpoint(): string {
-    return this.config.endpoint;
+    return this.apiUrl;
   }
 }
 
