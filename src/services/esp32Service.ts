@@ -1,36 +1,34 @@
 /**
  * ============================================================================
- * ESP32 REST API SERVICE
+ * BACKEND API SERVICE
  * ============================================================================
  * 
- * Handles HTTP communication with the ESP32 device.
+ * Handles HTTP communication with the Render-deployed backend API.
+ * The backend stores ESP32 sensor data in MongoDB Atlas.
  * 
- * INTEGRATION GUIDE:
- * ==================
+ * API ENDPOINT:
+ * GET /api/readings/latest
  * 
- * 1. ESP32 FIRMWARE REQUIREMENTS:
- *    Your ESP32 code must:
- *    - Run a web server (use ESPAsyncWebServer library)
- *    - Serve JSON at the root endpoint (/)
- *    - Include CORS headers
- * 
- * 2. EXPECTED JSON FORMAT:
- *    {
- *      "soilMoisture": 1234,
- *      "light": 3456
- *    }
- * 
- * 3. SAMPLE ESP32 CODE:
- *    See the comments in fetchSensorData() for Arduino code example
- * 
- * 4. CORS HEADERS (Required in ESP32 response):
- *    Access-Control-Allow-Origin: *
- *    Access-Control-Allow-Methods: GET, POST, OPTIONS
- *    Content-Type: application/json
+ * RESPONSE FORMAT:
+ * {
+ *   "success": true,
+ *   "reading": {
+ *     "soilValue": 2067,
+ *     "ldrValue": 2858,
+ *     "soilCondition": "Okay",
+ *     "lightCondition": "Okay",
+ *     "receivedAt": "2026-01-14T09:03:00.102Z"
+ *   }
+ * }
  */
 
-import type { SensorData, ESP32Config, ESP32Response } from '@/types/sensor.types';
-import { ESP32_CONFIG } from '@/config/app.config';
+import type { 
+  SensorData, 
+  ESP32Config, 
+  BackendAPIResponse,
+  BackendReading 
+} from '@/types/sensor.types';
+import { ESP32_CONFIG, CONNECTION_TIMEOUT_MS } from '@/config/app.config';
 
 // ============================================================================
 // ERROR TYPES
@@ -58,19 +56,24 @@ export class ESP32ParseError extends Error {
 }
 
 // ============================================================================
+// EXTENDED SENSOR DATA (includes backend metadata)
+// ============================================================================
+
+export interface ExtendedSensorData extends SensorData {
+  receivedAt: Date | null;
+  deviceId: string | null;
+  isESP32Online: boolean;
+}
+
+// ============================================================================
 // ESP32 SERVICE CLASS
 // ============================================================================
 
 /**
- * ESP32 REST API Service
+ * Backend API Service
  * 
- * Handles all HTTP communication with the ESP32 device.
- * 
- * USAGE:
- * ```typescript
- * const service = new ESP32Service(ESP32_CONFIG);
- * const data = await service.fetchSensorData();
- * ```
+ * Fetches sensor data from your Render-deployed backend.
+ * The backend stores data from ESP32 in MongoDB Atlas.
  */
 export class ESP32Service {
   private config: ESP32Config;
@@ -84,48 +87,15 @@ export class ESP32Service {
    * Get the full API URL
    */
   private get apiUrl(): string {
-    return `http://${this.config.endpoint}/`;
+    return this.config.endpoint;
   }
 
   /**
-   * Fetch sensor data from ESP32
+   * Fetch latest sensor data from backend API
    * 
-   * INTEGRATION NOTE:
-   * This method expects your ESP32 to return JSON in this format:
-   * {
-   *   "soilMoisture": 1234,  // ADC value 0-4095
-   *   "light": 3456          // ADC value 0-4095
-   * }
-   * 
-   * SAMPLE ESP32 ARDUINO CODE:
-   * ```cpp
-   * #include <ESPAsyncWebServer.h>
-   * #include <ArduinoJson.h>
-   * 
-   * AsyncWebServer server(80);
-   * 
-   * void setup() {
-   *   // ... WiFi setup ...
-   *   
-   *   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-   *     StaticJsonDocument<200> doc;
-   *     doc["soilMoisture"] = analogRead(SOIL_PIN);
-   *     doc["light"] = analogRead(LDR_PIN);
-   *     
-   *     String response;
-   *     serializeJson(doc, response);
-   *     
-   *     request->send(200, "application/json", response);
-   *   });
-   *   
-   *   // CORS headers
-   *   DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-   *   
-   *   server.begin();
-   * }
-   * ```
+   * Returns sensor data along with connection status info
    */
-  async fetchSensorData(): Promise<SensorData> {
+  async fetchSensorData(): Promise<ExtendedSensorData> {
     // Cancel any pending request
     this.abort();
     
@@ -139,7 +109,6 @@ export class ESP32Service {
       const response = await fetch(this.apiUrl, {
         method: 'GET',
         signal: this.abortController.signal,
-        mode: 'cors',
         headers: {
           'Accept': 'application/json',
         },
@@ -154,7 +123,7 @@ export class ESP32Service {
       }
 
       const data = await this.parseResponse(response);
-      return this.validateSensorData(data);
+      return this.transformBackendData(data);
       
     } catch (error) {
       clearTimeout(timeoutId);
@@ -169,35 +138,58 @@ export class ESP32Service {
       }
       
       throw new ESP32ConnectionError(
-        'Failed to connect to ESP32',
+        'Failed to connect to backend API',
         error
       );
     }
   }
 
   /**
-   * Parse JSON response from ESP32
+   * Parse JSON response from backend
    */
-  private async parseResponse(response: Response): Promise<ESP32Response> {
+  private async parseResponse(response: Response): Promise<BackendAPIResponse> {
     try {
       const data = await response.json();
-      return data as ESP32Response;
+      return data as BackendAPIResponse;
     } catch {
-      throw new ESP32ParseError('Invalid JSON response from ESP32');
+      throw new ESP32ParseError('Invalid JSON response from backend');
     }
   }
 
   /**
-   * Validate and normalize sensor data
+   * Transform backend response to frontend SensorData format
    */
-  private validateSensorData(data: ESP32Response): SensorData {
-    const soilMoisture = this.validateADCValue(data.soilMoisture, 'soilMoisture');
-    const light = this.validateADCValue(data.light, 'light');
+  private transformBackendData(response: BackendAPIResponse): ExtendedSensorData {
+    if (!response.success || !response.reading) {
+      throw new ESP32ParseError(response.error || 'No reading data available');
+    }
+
+    const reading = response.reading;
+    const receivedAt = reading.receivedAt ? new Date(reading.receivedAt) : null;
+    
+    // Check if ESP32 is online based on last data timestamp
+    const isESP32Online = this.checkESP32Online(receivedAt);
 
     return {
-      soilMoisture,
-      light,
+      soilMoisture: this.validateADCValue(reading.soilValue, 'soilValue'),
+      light: this.validateADCValue(reading.ldrValue, 'ldrValue'),
+      receivedAt,
+      deviceId: reading.deviceId || null,
+      isESP32Online,
     };
+  }
+
+  /**
+   * Check if ESP32 is online based on last data timestamp
+   * ESP32 is considered online if data was received within CONNECTION_TIMEOUT_MS
+   */
+  private checkESP32Online(lastReceived: Date | null): boolean {
+    if (!lastReceived) return false;
+    
+    const now = new Date();
+    const timeDiff = now.getTime() - lastReceived.getTime();
+    
+    return timeDiff < CONNECTION_TIMEOUT_MS;
   }
 
   /**
@@ -213,7 +205,7 @@ export class ESP32Service {
   }
 
   /**
-   * Check if ESP32 is reachable
+   * Check if backend API is reachable
    */
   async checkConnection(): Promise<boolean> {
     try {
@@ -255,6 +247,5 @@ export class ESP32Service {
 
 /**
  * Default ESP32 service instance
- * Use this for most cases, or create a new instance for custom config
  */
 export const esp32Service = new ESP32Service();

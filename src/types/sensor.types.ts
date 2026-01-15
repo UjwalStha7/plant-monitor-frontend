@@ -150,20 +150,42 @@ export interface SensorThresholds {
 // ============================================================================
 
 /**
- * Expected response format from ESP32 REST API
- * 
- * INTEGRATION: Ensure your ESP32 firmware returns this exact structure.
- * Use ArduinoJson library to create this JSON format.
+ * Backend API Reading object
+ * This matches the format returned by your Render/MongoDB backend
+ */
+export interface BackendReading {
+  id: string;
+  deviceId: string;
+  soilValue: number;        // Maps to soilMoisture
+  ldrValue: number;         // Maps to light
+  soilCondition: string;
+  lightCondition: string;
+  wifiRSSI?: number;
+  freeHeap?: number;
+  sendAttempt?: number;
+  receivedAt: string;       // ISO timestamp for connection status
+  timestamp?: number;
+}
+
+/**
+ * Backend API response format from /api/readings/latest
+ */
+export interface BackendAPIResponse {
+  success: boolean;
+  reading?: BackendReading;
+  error?: string;
+}
+
+/**
+ * Legacy ESP32 direct response format (for local network use)
  */
 export interface ESP32Response {
   soilMoisture: number;
   light: number;
-  // Optional fields for extended sensors:
   temperature?: number;
   humidity?: number;
-  // Optional metadata:
-  uptime?: number;       // ESP32 uptime in seconds
-  freeHeap?: number;     // Free memory for debugging
+  uptime?: number;
+  freeHeap?: number;
 }
 
 /**

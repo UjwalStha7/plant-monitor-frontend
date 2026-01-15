@@ -1,6 +1,6 @@
-// src/components/ConnectionStatusBar.tsx
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 interface ConnectionStatusBarProps {
   isConnected: boolean;
@@ -9,60 +9,58 @@ interface ConnectionStatusBarProps {
   onRefresh: () => void;
 }
 
-export default function ConnectionStatusBar({
+export const ConnectionStatusBar = ({
   isConnected,
   lastUpdate,
   isChecking,
   onRefresh,
-}: ConnectionStatusBarProps) {
-  const formatLastUpdate = (date: Date | null) => {
+}: ConnectionStatusBarProps) => {
+  const formatLastUpdate = (date: Date | null): string => {
     if (!date) return 'Never';
     
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
-    const diffSecs = Math.floor(diffMs / 1000);
-    const diffMins = Math.floor(diffSecs / 60);
+    const diffSeconds = Math.floor(diffMs / 1000);
     
-    if (diffSecs < 10) return 'Just now';
-    if (diffSecs < 60) return `${diffSecs}s ago`;
-    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffSeconds < 5) return 'Just now';
+    if (diffSeconds < 60) return `${diffSeconds}s ago`;
+    if (diffSeconds < 3600) return `${Math.floor(diffSeconds / 60)}m ago`;
     
     return date.toLocaleTimeString();
   };
 
   return (
-    <div className="flex items-center gap-2">
-      {/* Status Indicator */}
-      <div className="flex items-center gap-1.5">
+    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 px-3 sm:px-4 py-2 bg-card rounded-lg border shadow-sm">
+      <div className="flex items-center gap-2">
+        {isConnected ? (
+          <Wifi className="h-4 w-4 text-success flex-shrink-0" />
+        ) : (
+          <WifiOff className="h-4 w-4 text-destructive flex-shrink-0" />
+        )}
         <span
-          className={`inline-block w-2 h-2 rounded-full ${
-            isConnected
-              ? 'bg-green-500 animate-pulse'
-              : 'bg-red-500'
-          }`}
-        />
-        <span className="text-xs sm:text-sm font-medium">
+          className={cn(
+            'text-xs sm:text-sm font-medium whitespace-nowrap',
+            isConnected ? 'text-success' : 'text-destructive'
+          )}
+        >
           {isConnected ? 'Connected' : 'Disconnected'}
         </span>
       </div>
 
-      {/* Last Update */}
-      <span className="hidden sm:inline text-xs text-muted-foreground">
-        {formatLastUpdate(lastUpdate)}
+      <span className="text-xs sm:text-sm text-muted-foreground hidden md:inline">
+        Last updated: {formatLastUpdate(lastUpdate)}
       </span>
 
-      {/* Refresh Button */}
       <Button
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={onRefresh}
         disabled={isChecking}
-        className="h-8 w-8 p-0"
+        className="gap-1.5 sm:gap-2 h-8 px-2 sm:px-3 text-xs sm:text-sm"
       >
-        <RefreshCw
-          className={`h-4 w-4 ${isChecking ? 'animate-spin' : ''}`}
-        />
+        <RefreshCw className={cn('h-3.5 w-3.5 sm:h-4 sm:w-4', isChecking && 'animate-spin')} />
+        <span className="hidden xs:inline">Refresh</span>
       </Button>
     </div>
   );
-}
+};

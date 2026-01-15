@@ -1,4 +1,3 @@
-/// <reference types="node" />
 /**
  * ============================================================================
  * MOCK DATA SERVICE
@@ -113,12 +112,17 @@ export const generateMockHistoryData = (
 
 /**
  * Create a new history data point from current sensor data
+ * @param sensorData - Current sensor readings
+ * @param timestamp - Optional timestamp (defaults to now)
  */
-export const createHistoryPoint = (sensorData: SensorData): HistoryDataPoint => {
-  const now = new Date();
+export const createHistoryPoint = (
+  sensorData: SensorData, 
+  timestamp?: Date
+): HistoryDataPoint => {
+  const time = timestamp || new Date();
   return {
-    time: formatTimeString(now),
-    timestamp: now.getTime(),
+    time: formatTimeString(time),
+    timestamp: time.getTime(),
     soilMoisture: sensorData.soilMoisture,
     light: sensorData.light,
   };

@@ -1,111 +1,228 @@
-// src/hooks/useSensorData.ts - DIRECT API CALLS (NO SERVICE ABSTRACTION)
-import { useState, useEffect, useCallback } from 'react';
+/**
+ * ============================================================================
+ * USE SENSOR DATA HOOK
+ * ============================================================================
+ * 
+ * Unified hook for accessing sensor data from the backend API.
+ * Fetches real sensor readings from your Render-deployed backend.
+ * 
+ * FEATURES:
+ * - Polls the backend API at configured intervals
+ * - Determines ESP32 connection status from data timestamps
+ * - Maintains history for chart visualization
+ * - Falls back gracefully on errors
+ */
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://plant-monitor-api.onrender.com';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { 
+  SensorData, 
+  HistoryDataPoint, 
+  ConnectionState,
+  DataSourceMode 
+} from '@/types/sensor.types';
+import { 
+  APP_CONFIG, 
+  DATA_SOURCE_MODE,
+  HISTORY_MAX_POINTS 
+} from '@/config/app.config';
+import { 
+  esp32Service,
+  type ExtendedSensorData,
+} from '@/services/esp32Service';
+import {
+  generateMockHistoryData,
+  generateRandomSensorData,
+  createHistoryPoint,
+  DEFAULT_MOCK_DATA,
+} from '@/services/mockDataService';
 
-interface SensorDataState {
-  soilMoisture: number;
-  light: number;
-}
+// ============================================================================
+// HOOK INTERFACE
+// ============================================================================
 
 export interface UseSensorDataResult {
-  sensorData: SensorDataState;
-  historyData: any[];
-  connectionState: {
-    isConnected: boolean;
-    lastUpdate: Date | null;
-    isChecking: boolean;
-  };
+  /** Current sensor readings */
+  sensorData: SensorData;
+  /** Historical data for charts */
+  historyData: HistoryDataPoint[];
+  /** Connection state (ESP32 online/offline) */
+  connectionState: ConnectionState;
+  /** Configuration info */
   config: {
     endpoint: string;
     updateInterval: number;
+    dataSource: DataSourceMode;
   };
-  refresh: () => void;
+  /** Manual refresh function */
+  refresh: () => Promise<void>;
 }
 
-export function useSensorData(): UseSensorDataResult {
-  const [sensorData, setSensorData] = useState<SensorDataState>({
-    soilMoisture: 0,
-    light: 0,
-  });
-  const [historyData, setHistoryData] = useState<any[]>([]);
-  const [connectionState, setConnectionState] = useState({
+// ============================================================================
+// HOOK IMPLEMENTATION
+// ============================================================================
+
+export const useSensorData = (): UseSensorDataResult => {
+  // Sensor data state
+  const [sensorData, setSensorData] = useState<SensorData>(DEFAULT_MOCK_DATA);
+  
+  // History data state - start empty, will fill with real data
+  const [historyData, setHistoryData] = useState<HistoryDataPoint[]>([]);
+  
+  // Connection state
+  const [connectionState, setConnectionState] = useState<ConnectionState>({
     isConnected: false,
     lastUpdate: null,
-    isChecking: false,
+    isChecking: true,
+    error: null,
   });
 
-  const [config] = useState({
-    endpoint: API_BASE_URL + '/api/sensor-data',
-    updateInterval: 5000,
-  });
+  // Ref to track mounted state
+  const isMountedRef = useRef(true);
+  
+  // Track if we've done initial fetch
+  const initialFetchDone = useRef(false);
 
-  const fetchLatestData = useCallback(async () => {
-    setConnectionState(prev => ({ ...prev, isChecking: true }));
-    
+  /**
+   * Add a new point to history, maintaining max length
+   */
+  const addHistoryPoint = useCallback((data: SensorData, timestamp?: Date) => {
+    const newPoint = createHistoryPoint(data, timestamp);
+    setHistoryData((prev) => {
+      const updated = [...prev, newPoint];
+      return updated.slice(-HISTORY_MAX_POINTS);
+    });
+  }, []);
+
+  /**
+   * Fetch data from the backend API
+   */
+  const fetchData = useCallback(async () => {
+    if (!isMountedRef.current) return;
+
+    setConnectionState((prev) => ({ 
+      ...prev, 
+      isChecking: true, 
+      error: null 
+    }));
+
     try {
-      console.log('🔄 DIRECT API CALL:', config.endpoint);
-      const response = await fetch(config.endpoint);
-      
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      
-      const result = await response.json();
-      console.log('✅ DIRECT API RESPONSE:', result);
-      
-      const latest = result.data?.[0] || result.latest;
-      if (latest) {
-        setSensorData({
-          soilMoisture: latest.soilValue || 0,
-          light: latest.ldrValue || 0,
-        });
-        setConnectionState({
-          isConnected: true,
-          lastUpdate: new Date(),
-          isChecking: false,
-        });
+      let newData: SensorData;
+      let isESP32Online = false;
+      let receivedAt: Date | null = null;
+
+      if (DATA_SOURCE_MODE === 'mock') {
+        // Use mock data service
+        newData = generateRandomSensorData();
+        isESP32Online = true;
+        receivedAt = new Date();
+      } else {
+        // Fetch from real backend API
+        const extendedData: ExtendedSensorData = await esp32Service.fetchSensorData();
+        
+        newData = {
+          soilMoisture: extendedData.soilMoisture,
+          light: extendedData.light,
+        };
+        
+        isESP32Online = extendedData.isESP32Online;
+        receivedAt = extendedData.receivedAt;
       }
-    } catch (error) {
-      console.error('❌ DIRECT API ERROR:', error);
-      setConnectionState(prev => ({
-        ...prev,
-        isConnected: false,
+
+      if (!isMountedRef.current) return;
+
+      const now = new Date();
+      
+      setSensorData(newData);
+      addHistoryPoint(newData, receivedAt || now);
+      
+      setConnectionState({
+        isConnected: isESP32Online,
+        lastUpdate: receivedAt || now,
         isChecking: false,
-      }));
-    }
-  }, [config.endpoint]);
+        error: isESP32Online ? null : 'ESP32 offline - no recent data',
+      });
 
-  const fetchHistoricalData = useCallback(async () => {
-    try {
-      const url = `${config.endpoint}?limit=100`;
-      console.log('📈 History:', url);
-      const response = await fetch(url);
-      const result = await response.json();
-      setHistoryData(result.data || []);
     } catch (error) {
-      console.error('❌ History error:', error);
+      if (!isMountedRef.current) return;
+
+      const errorMessage = error instanceof Error ? error.message : 'Connection failed';
+
+      // Keep showing last known values, but update connection state
+      setConnectionState({
+        isConnected: false,
+        lastUpdate: connectionState.lastUpdate,
+        isChecking: false,
+        error: errorMessage,
+      });
+
+      // If this is the first fetch and it failed, use mock data for initial display
+      if (!initialFetchDone.current) {
+        setSensorData(DEFAULT_MOCK_DATA);
+        setHistoryData(generateMockHistoryData(10, APP_CONFIG.esp32.updateInterval));
+      }
     }
-  }, [config.endpoint]);
 
+    initialFetchDone.current = true;
+  }, [addHistoryPoint, connectionState.lastUpdate]);
+
+  /**
+   * Manual refresh function
+   */
+  const refresh = useCallback(async () => {
+    await fetchData();
+  }, [fetchData]);
+
+  /**
+   * Setup polling interval
+   */
   useEffect(() => {
-    fetchLatestData();
-    fetchHistoricalData();
-  }, [fetchLatestData, fetchHistoricalData]);
+    isMountedRef.current = true;
+    
+    // Initial fetch
+    fetchData();
 
-  useEffect(() => {
-    const interval = setInterval(fetchLatestData, config.updateInterval);
-    return () => clearInterval(interval);
-  }, [fetchLatestData, config.updateInterval]);
+    // Setup polling interval
+    const intervalId = setInterval(
+      fetchData, 
+      APP_CONFIG.esp32.updateInterval * 1000
+    );
 
-  const refresh = useCallback(() => {
-    fetchLatestData();
-    fetchHistoricalData();
-  }, [fetchLatestData, fetchHistoricalData]);
+    // Cleanup
+    return () => {
+      isMountedRef.current = false;
+      clearInterval(intervalId);
+    };
+  }, []); // Empty deps - fetchData is stable via useCallback
 
   return {
     sensorData,
     historyData,
     connectionState,
-    config,
+    config: {
+      endpoint: APP_CONFIG.esp32.endpoint,
+      updateInterval: APP_CONFIG.esp32.updateInterval,
+      dataSource: DATA_SOURCE_MODE,
+    },
     refresh,
   };
-}
+};
+
+// ============================================================================
+// ADDITIONAL HOOKS
+// ============================================================================
+
+/**
+ * Hook to get only the current sensor readings
+ */
+export const useCurrentSensorData = () => {
+  const { sensorData, connectionState, refresh } = useSensorData();
+  return { sensorData, connectionState, refresh };
+};
+
+/**
+ * Hook to get only history data
+ */
+export const useSensorHistory = () => {
+  const { historyData } = useSensorData();
+  return historyData;
+};

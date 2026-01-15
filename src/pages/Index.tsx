@@ -1,7 +1,20 @@
-// src/pages/Index.tsx
-import ConnectionStatusBar from '@/components/ConnectionStatusBar';
+/**
+ * ============================================================================
+ * INDEX PAGE - PLANT MONITORING DASHBOARD
+ * ============================================================================
+ * 
+ * Main dashboard page that displays sensor data and charts.
+ * Uses the refactored useSensorData hook for data access.
+ * 
+ * ARCHITECTURE:
+ * - Data is provided by useSensorData hook
+ * - Condition evaluation uses functions from app.config.ts
+ * - Components receive data via props (no direct service access)
+ */
+
+import { ConnectionStatusBar } from '@/components/ConnectionStatusBar';
 import { SystemConfigCard } from '@/components/SystemConfigCard';
-import SensorCard from '@/components/SensorCard';
+import { SensorCard } from '@/components/SensorCard';
 import { SensorChart } from '@/components/SensorChart';
 import { ThemeToggle } from '@/components/ThemeToggle';
 import { useSensorData } from '@/hooks/useSensorData';
@@ -9,7 +22,7 @@ import { getSoilMoistureCondition, getLightCondition } from '@/config/app.config
 import { Leaf } from 'lucide-react';
 
 const Index = () => {
-  // Get sensor data from the hook
+  // Get sensor data from the unified hook
   const {
     sensorData,
     historyData,
@@ -18,15 +31,15 @@ const Index = () => {
     refresh,
   } = useSensorData();
 
-  // Destructure connection state
+  // Destructure connection state for cleaner access
   const { isConnected, lastUpdate, isChecking } = connectionState;
 
-  // Calculate conditions
+  // Calculate conditions based on current sensor values
   const soilCondition = getSoilMoistureCondition(sensorData.soilMoisture);
   const lightCondition = getLightCondition(sensorData.light);
 
   return (
-    <div className="min-h-screen bg-background flex flex-col">
+    <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="container mx-auto px-3 sm:px-4 lg:px-8 py-3 sm:py-4">
@@ -61,7 +74,7 @@ const Index = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8 flex-1">
+      <main className="container mx-auto px-3 sm:px-4 lg:px-8 py-4 sm:py-6 lg:py-8">
         <div className="space-y-4 sm:space-y-6 lg:space-y-8">
           
           {/* Current Readings Section */}
@@ -115,7 +128,7 @@ const Index = () => {
       <footer className="border-t mt-auto py-4 sm:py-6">
         <div className="container mx-auto px-3 sm:px-4 lg:px-8">
           <p className="text-center text-xs sm:text-sm text-muted-foreground">
-            Plant Monitoring System by <span className="font-semibold text-primary">UK DJ's</span>
+            Plant Monitoring System by UK DJ's
           </p>
         </div>
       </footer>

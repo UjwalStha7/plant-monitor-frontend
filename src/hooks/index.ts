@@ -1,15 +1,22 @@
-// src/hooks/index.ts
+/**
+ * ============================================================================
+ * HOOKS INDEX
+ * ============================================================================
+ * 
+ * Central export for all custom hooks.
+ * Import from here for cleaner imports throughout the app.
+ */
 
-// Export all functions from useSensorData
+// Sensor data hooks
 export { 
   useSensorData, 
   useCurrentSensorData, 
   useSensorHistory 
 } from './useSensorData';
-
-// Export the type
 export type { UseSensorDataResult } from './useSensorData';
 
-// If you have other hooks, export them here as well
-// Example:
-// export { useOtherHook } from './useOtherHook';
+// Mobile detection hook
+export { useIsMobile } from './use-mobile';
+
+// Toast hook
+export { useToast } from './use-toast';

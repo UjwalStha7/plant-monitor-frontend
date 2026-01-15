@@ -1,5 +1,3 @@
-/// <reference types="node" />
-
 /**
  * ============================================================================
  * WEBSOCKET SERVICE (FUTURE IMPLEMENTATION)
@@ -188,7 +186,7 @@ export class WebSocketService {
       this.scheduleReconnect();
     };
 
-    this.ws.onerror = () => {
+    this.ws.onerror = (event) => {
       const error = new Error('WebSocket error');
       this.handleError(error);
     };
