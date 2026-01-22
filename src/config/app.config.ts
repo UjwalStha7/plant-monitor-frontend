@@ -8,7 +8,7 @@
  * 
  * INTEGRATION GUIDE:
  * 1. To connect to real ESP32: Set DATA_SOURCE_MODE to 'esp32'
- * 2. Update ESP32_CONFIG.endpoint to your device's IP address
+ * 2. Update ESP32_CONFIG.endpoint to your Render backend URL
  * 3. For WebSocket: Set DATA_SOURCE_MODE to 'websocket' and configure WEBSOCKET_CONFIG
  */
 
@@ -30,7 +30,7 @@ import type {
  * 
  * Options:
  * - 'mock': Use simulated data (for development/demo)
- * - 'esp32': Connect to real ESP32 via HTTP polling
+ * - 'esp32': Connect to real ESP32 via HTTP polling (PRODUCTION)
  * - 'websocket': Use WebSocket for real-time updates (future)
  * 
  * TOGGLE THIS to switch between mock and real data
@@ -47,32 +47,43 @@ export const DATA_SOURCE_MODE: DataSourceMode = 'esp32';
  * Your Render-deployed backend with MongoDB Atlas storage.
  * The ESP32 sends data to this backend, and the frontend fetches from it.
  * 
- * API Response format from /api/readings/latest:
+ * IMPORTANT: Replace this with YOUR actual Render URL after deployment!
+ * 
+ * API Response format from /api/sensor-data:
  * {
  *   "success": true,
- *   "reading": {
+ *   "timestamp": "2026-01-22T...",
+ *   "count": 50,
+ *   "deviceStatus": "Connected",
+ *   "latest": {
  *     "soilValue": 2067,
  *     "ldrValue": 2858,
  *     "soilCondition": "Okay",
  *     "lightCondition": "Okay",
- *     "receivedAt": "2026-01-14T09:03:00.102Z"
+ *     "timestamp": "2026-01-14T09:03:00.102Z",
+ *     "deviceId": "ESP32_Plant_Monitor"
  *   }
  * }
  */
 export const ESP32_CONFIG: ESP32Config = {
-  endpoint: 'https://plant-monitor-api.onrender.com/api/readings/latest',
-  updateInterval: 5,           // Poll every 5 seconds
-  timeout: 15000,              // 15 second timeout (Render cold starts can be slow)
+  // ⚠️ UPDATE THIS with your actual Render backend URL
+  endpoint: 'https://your-backend-name.onrender.com/api/sensor-data',
+  
+  // Poll every 10 seconds (balance between real-time and server load)
+  updateInterval: 10,
+  
+  // 20 second timeout (Render free tier can have cold starts)
+  timeout: 20000,
 };
 
 /**
  * Connection timeout threshold in milliseconds
  * If no data received within this time, ESP32 is considered disconnected
  * 
- * NOTE: This should match the backend's timeout (120 seconds / 2 minutes)
- * The backend considers ESP32 "Connected" if data was received within 2 minutes
+ * NOTE: Backend considers ESP32 "Connected" if data within 3 minutes (180 seconds)
+ * We use a slightly shorter timeout here for more responsive UI
  */
-export const CONNECTION_TIMEOUT_MS = 120000; // 2 minutes (matches backend)
+export const CONNECTION_TIMEOUT_MS = 180000; // 3 minutes (matches backend threshold)
 
 // ============================================================================
 // WEBSOCKET CONFIGURATION (FUTURE)

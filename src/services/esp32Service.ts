@@ -7,28 +7,32 @@
  * The backend stores ESP32 sensor data in MongoDB Atlas.
  * 
  * API ENDPOINT:
- * GET /api/readings/latest
+ * GET /api/sensor-data
  * 
  * RESPONSE FORMAT:
  * {
  *   "success": true,
- *   "reading": {
+ *   "timestamp": "2026-01-22T...",
+ *   "count": 50,
+ *   "deviceStatus": "Connected",  // ← Backend calculates this!
+ *   "timeSinceLastReading": 45,
+ *   "latest": {
  *     "soilValue": 2067,
  *     "ldrValue": 2858,
  *     "soilCondition": "Okay",
  *     "lightCondition": "Okay",
- *     "receivedAt": "2026-01-14T09:03:00.102Z"
+ *     "timestamp": "2026-01-14T09:03:00.102Z",
+ *     "deviceId": "ESP32_Plant_Monitor",
+ *     "lastUpdated": "2026-01-14T09:03:00.102Z"
  *   }
  * }
  */
 
 import type { 
   SensorData, 
-  ESP32Config, 
-  BackendAPIResponse,
-  BackendReading 
+  ESP32Config
 } from '@/types/sensor.types';
-import { ESP32_CONFIG, CONNECTION_TIMEOUT_MS } from '@/config/app.config';
+import { ESP32_CONFIG } from '@/config/app.config';
 
 // ============================================================================
 // ERROR TYPES
@@ -56,6 +60,31 @@ export class ESP32ParseError extends Error {
 }
 
 // ============================================================================
+// BACKEND API RESPONSE INTERFACES
+// ============================================================================
+
+interface BackendLatestReading {
+  soilValue: number;
+  ldrValue: number;
+  soilCondition: string;
+  lightCondition: string;
+  timestamp: string;
+  deviceId: string;
+  wifiRSSI?: number;
+  lastUpdated: string;
+}
+
+interface BackendAPIResponse {
+  success: boolean;
+  timestamp: string;
+  count: number;
+  deviceStatus: 'Connected' | 'Disconnected';
+  timeSinceLastReading?: number;
+  latest: BackendLatestReading | null;
+  error?: string;
+}
+
+// ============================================================================
 // EXTENDED SENSOR DATA (includes backend metadata)
 // ============================================================================
 
@@ -73,7 +102,7 @@ export interface ExtendedSensorData extends SensorData {
  * Backend API Service
  * 
  * Fetches sensor data from your Render-deployed backend.
- * The backend stores data from ESP32 in MongoDB Atlas.
+ * The backend stores data from ESP32 in MongoDB Atlas and calculates connection status.
  */
 export class ESP32Service {
   private config: ESP32Config;
@@ -160,15 +189,15 @@ export class ESP32Service {
    * Transform backend response to frontend SensorData format
    */
   private transformBackendData(response: BackendAPIResponse): ExtendedSensorData {
-    if (!response.success || !response.reading) {
+    if (!response.success || !response.latest) {
       throw new ESP32ParseError(response.error || 'No reading data available');
     }
 
-    const reading = response.reading;
-    const receivedAt = reading.receivedAt ? new Date(reading.receivedAt) : null;
+    const reading = response.latest;
+    const receivedAt = reading.timestamp ? new Date(reading.timestamp) : null;
     
-    // Check if ESP32 is online based on last data timestamp
-    const isESP32Online = this.checkESP32Online(receivedAt);
+    // Backend already calculates device status for us!
+    const isESP32Online = response.deviceStatus === 'Connected';
 
     return {
       soilMoisture: this.validateADCValue(reading.soilValue, 'soilValue'),
@@ -177,19 +206,6 @@ export class ESP32Service {
       deviceId: reading.deviceId || null,
       isESP32Online,
     };
-  }
-
-  /**
-   * Check if ESP32 is online based on last data timestamp
-   * ESP32 is considered online if data was received within CONNECTION_TIMEOUT_MS
-   */
-  private checkESP32Online(lastReceived: Date | null): boolean {
-    if (!lastReceived) return false;
-    
-    const now = new Date();
-    const timeDiff = now.getTime() - lastReceived.getTime();
-    
-    return timeDiff < CONNECTION_TIMEOUT_MS;
   }
 
   /**
