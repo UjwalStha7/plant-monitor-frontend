@@ -67,7 +67,7 @@ export const DATA_SOURCE_MODE: DataSourceMode = 'esp32';
  */
 export const ESP32_CONFIG: ESP32Config = {
   // ⚠️ UPDATE THIS with your actual Render backend URL
-  endpoint: 'https://your-backend-name.onrender.com/api/sensor-data',
+  endpoint: 'https://plant-monitor-backend-bv4c.onrender.com/api/sensor-data',
   
   // Poll every 10 seconds (balance between real-time and server load)
   updateInterval: 10,
